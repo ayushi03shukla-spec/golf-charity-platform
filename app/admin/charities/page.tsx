@@ -1,120 +1,215 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import Link from "next/link";
 
-export default async function HomePage() {
+async function addCharity(formData: FormData) {
+  "use server";
+
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/user");
+  }
+
+  const name = String(formData.get("name"));
+  const description = String(formData.get("description"));
+  const category = String(formData.get("category"));
+  const upcomingEvents = String(formData.get("upcoming_events"));
+  const featured = formData.get("featured") === "on";
+
+  if (!name || !description || !category) {
+    return;
+  }
+
+  await supabase.from("charities").insert({
+    name,
+    description,
+    category,
+    upcoming_events: upcomingEvents,
+    featured,
+    active: true,
+  });
+
+  revalidatePath("/admin/charities");
+  revalidatePath("/user/charity");
+  redirect("/admin/charities");
+}
+
+async function deleteCharity(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/user");
+  }
+
+  const charityId = String(formData.get("charity_id"));
+
+  await supabase
+    .from("charities")
+    .update({ active: false })
+    .eq("id", charityId);
+
+  revalidatePath("/admin/charities");
+  revalidatePath("/user/charity");
+  redirect("/admin/charities");
+}
+
+export default async function AdminCharitiesPage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/user");
+  }
 
   const { data: charities } = await supabase
     .from("charities")
-    .select("id, name, description, featured, category")
-    .eq("active", true)
-    .order("featured", { ascending: false })
-    .limit(3);
+    .select("*")
+    .order("created_at", { ascending: false });
 
   return (
-    <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-6xl space-y-12">
-        <section className="grid gap-8 md:grid-cols-2 md:items-center">
-          <div className="space-y-5">
-            <p className="text-sm uppercase tracking-[0.2em] text-gray-500">
-              Golf Charity Subscription Platform
-            </p>
+    <div className="min-h-screen p-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Manage Charities</h1>
+          <Link href="/admin" className="rounded-lg border px-4 py-2">
+            Back to Admin
+          </Link>
+        </div>
 
-            <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-              Play smarter. Win monthly. Support a cause that matters.
-            </h1>
+        <div className="rounded-2xl border p-6 shadow-sm">
+          <h2 className="mb-4 text-xl font-medium">Add Charity</h2>
 
-            <p className="text-lg text-gray-600">
-              Track your latest golf scores, join monthly prize draws, and
-              contribute part of your subscription to your chosen charity.
-            </p>
+          <form action={addCharity} className="grid gap-4">
+            <input
+              type="text"
+              name="name"
+              placeholder="Charity name"
+              required
+              className="rounded-lg border p-3"
+            />
 
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/signup"
-                className="rounded-lg bg-black px-5 py-3 text-white"
-              >
-                Get Started
-              </Link>
+            <input
+              type="text"
+              name="category"
+              placeholder="Category"
+              required
+              className="rounded-lg border p-3"
+            />
 
-              <Link
-                href="/login"
-                className="rounded-lg border px-5 py-3"
-              >
-                Login
-              </Link>
-            </div>
-          </div>
+            <textarea
+              name="description"
+              placeholder="Description"
+              required
+              className="min-h-28 rounded-lg border p-3"
+            />
 
-          <div className="rounded-3xl border p-6 shadow-sm">
+            <input
+              type="text"
+              name="upcoming_events"
+              placeholder="Upcoming events"
+              className="rounded-lg border p-3"
+            />
+
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="featured" />
+              <span>Featured charity</span>
+            </label>
+
+            <button
+              type="submit"
+              className="rounded-lg bg-black px-4 py-3 text-white"
+            >
+              Add Charity
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-2xl border p-6 shadow-sm">
+          <h2 className="mb-4 text-xl font-medium">All Charities</h2>
+
+          {!charities || charities.length === 0 ? (
+            <p>No charities found.</p>
+          ) : (
             <div className="space-y-4">
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 1</p>
-                <p className="mt-1 font-medium">Subscribe monthly or yearly</p>
-              </div>
+              {charities.map((charity) => (
+                <div key={charity.id} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium">{charity.name}</p>
+                      <p className="text-sm text-gray-600">{charity.category}</p>
+                      <p className="mt-2 text-sm">{charity.description}</p>
+                      <p className="mt-2 text-sm text-gray-600">
+                        Upcoming Events: {charity.upcoming_events || "N/A"}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Featured: {charity.featured ? "Yes" : "No"}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Active: {charity.active ? "Yes" : "No"}
+                      </p>
+                    </div>
 
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 2</p>
-                <p className="mt-1 font-medium">Enter your latest 5 golf scores</p>
-              </div>
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 3</p>
-                <p className="mt-1 font-medium">Join monthly draw-based prizes</p>
-              </div>
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 4</p>
-                <p className="mt-1 font-medium">Support your selected charity</p>
-              </div>
+                    <form action={deleteCharity}>
+                      <input type="hidden" name="charity_id" value={charity.id} />
+                      <button
+                        type="submit"
+                        className="rounded-lg border px-3 py-2 text-sm"
+                      >
+                        Deactivate
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Track Performance</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Maintain your latest 5 Stableford scores with a clean, simple score flow.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Win Monthly Rewards</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Participate in monthly 3-match, 4-match, and 5-match prize categories.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Give with Impact</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Choose a charity and direct part of your subscription toward meaningful causes.
-            </p>
-          </div>
-        </section>
-
-        <section className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Featured Charities</h2>
-            <Link href="/charities" className="text-sm underline">
-              View all
-            </Link>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {charities?.map((charity) => (
-              <div key={charity.id} className="rounded-2xl border p-6">
-                <p className="text-sm text-gray-500">{charity.category}</p>
-                <h3 className="mt-2 text-lg font-semibold">{charity.name}</h3>
-                <p className="mt-3 text-sm text-gray-600">
-                  {charity.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+          )}
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
