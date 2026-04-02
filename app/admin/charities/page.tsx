@@ -68,9 +68,7 @@ export default async function CharityPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role === "admin") {
-    redirect("/admin");
-  }
+  
 
   const { data: charities } = await supabase
     .from("charities")
@@ -88,7 +86,9 @@ export default async function CharityPage() {
     <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-white">Choose Your Charity</h1>
+          <h1 className="text-2xl font-semibold text-white">
+            Choose Your Charity
+          </h1>
           <Link
             href="/user"
             className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
@@ -98,7 +98,9 @@ export default async function CharityPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-          <h2 className="mb-4 text-xl font-medium text-white">Charity Preference</h2>
+          <h2 className="mb-4 text-xl font-medium text-white">
+            Charity Preference
+          </h2>
 
           <form action={saveCharitySelection} className="space-y-4">
             <select
@@ -132,13 +134,15 @@ export default async function CharityPage() {
               Save Charity Preference
             </button>
           </form>
-
           <p className="mt-3 text-sm text-slate-300">
             Minimum charity contribution is 10%.
           </p>
         </div>
+
         <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-          <h2 className="mb-4 text-xl font-medium text-white">Available Charities</h2>
+          <h2 className="mb-4 text-xl font-medium text-white">
+            Available Charities
+          </h2>
 
           <div className="space-y-4">
             {charities?.map((charity) => (
@@ -148,7 +152,9 @@ export default async function CharityPage() {
               >
                 <p className="font-medium text-white">{charity.name}</p>
                 <p className="text-sm text-teal-300">{charity.category}</p>
-                <p className="mt-2 text-sm text-slate-300">{charity.description}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  {charity.description}
+                </p>
               </div>
             ))}
           </div>

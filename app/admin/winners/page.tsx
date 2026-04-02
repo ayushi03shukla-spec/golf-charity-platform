@@ -81,34 +81,44 @@ export default async function AdminWinnersPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Winner Verification</h1>
-          <Link href="/admin" className="rounded-lg border px-4 py-2">
+          <h1 className="text-2xl font-semibold text-white">
+            Winner Verification
+          </h1>
+          <Link
+            href="/admin"
+            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
+          >
             Back to Admin
           </Link>
         </div>
 
         {!winners || winners.length === 0 ? (
-          <div className="rounded-2xl border p-6">
-            <p>No winners yet.</p>
+          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+            <p className="text-slate-300">No winners yet.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {winners.map((winner) => (
-              <div key={winner.id} className="rounded-2xl border p-6 shadow-sm">
-                <p className="font-medium">Match Type: {winner.match_type}</p>
-                <p className="text-sm text-gray-600">
+              <div
+                key={winner.id}
+                className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20"
+              >
+                <p className="font-medium text-white">
+                  Match Type: {winner.match_type}
+                </p>
+                <p className="text-sm text-slate-300">
                   Prize Amount: ₹ {Number(winner.prize_amount).toFixed(2)}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-slate-300">
                   Verification Status: {winner.verification_status}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-slate-300">
                   Payment Status: {winner.payment_status}
                 </p>
-                <p className="text-sm text-gray-600 break-all">
+                <p className="text-sm text-slate-300 break-all">
                   Proof: {winner.proof_file_url || "Not submitted"}
                 </p>
 
@@ -117,7 +127,7 @@ export default async function AdminWinnersPage() {
                     <input type="hidden" name="winner_id" value={winner.id} />
                     <button
                       type="submit"
-                      className="rounded-lg border px-3 py-2 text-sm"
+                      className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
                     >
                       Approve
                     </button>
@@ -127,7 +137,7 @@ export default async function AdminWinnersPage() {
                     <input type="hidden" name="winner_id" value={winner.id} />
                     <button
                       type="submit"
-                      className="rounded-lg border px-3 py-2 text-sm"
+                      className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
                     >
                       Reject
                     </button>
@@ -137,7 +147,7 @@ export default async function AdminWinnersPage() {
                     <input type="hidden" name="winner_id" value={winner.id} />
                     <button
                       type="submit"
-                      className="rounded-lg bg-black px-3 py-2 text-sm text-white"
+                      className="rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition hover:bg-blue-400"
                     >
                       Mark Paid
                     </button>

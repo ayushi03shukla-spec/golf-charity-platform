@@ -1,11 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 
-async function submitProof(formData: FormData) {
-  "use server";
-
+export default async function UserPage() {
   const supabase = await createClient();
 
   const {
@@ -14,36 +11,10 @@ async function submitProof(formData: FormData) {
 
   if (!user) redirect("/login");
 
-  const winnerId = String(formData.get("winner_id"));
-  const proofFileUrl = String(formData.get("proof_file_url"));
-
-  if (!winnerId || !proofFileUrl) return;
-
-  await supabase
-    .from("winners")
-    .update({
-      proof_file_url: proofFileUrl,
-      verification_status: "pending",
-    })
-    .eq("id", winnerId)
-    .eq("user_id", user.id);
-
-  revalidatePath("/user/winnings");
-  revalidatePath("/admin/winners");
-}
-
-export default async function UserWinningsPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
+  // profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("full_name, email, role")
     .eq("id", user.id)
     .single();
 
@@ -51,84 +22,171 @@ export default async function UserWinningsPage() {
     redirect("/admin");
   }
 
-  const { data: winners } = await supabase
-    .from("winners")
+  // subscription
+  const { data: subscription } = await supabase
+    .from("subscriptions")
     .select(`
-      id,
-      match_type,
-      prize_amount,
-      proof_file_url,
-      verification_status,
-      payment_status,
-      created_at,
-      draw_id
+      plan_type,
+      status,
+      charity_percentage,
+      charity_id
     `)
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .maybeSingle();
+
+  // charity
+  let charityName = "Not selected";
+
+  if (subscription?.charity_id) {
+    const { data: charity } = await supabase
+      .from("charities")
+      .select("name")
+      .eq("id", subscription.charity_id)
+      .single();
+
+    charityName = charity?.name || "Not selected";
+  }
+
+  // winnings summary
+  const { data: winners } = await supabase
+    .from("winners")
+    .select("prize_amount")
+    .eq("user_id", user.id);
+
+  const totalWinnings =
+    winners?.reduce(
+      (sum, w) => sum + Number(w.prize_amount || 0),
+      0
+    ) || 0;
 
   return (
     <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-white">My Winnings</h1>
-          <Link
-            href="/user"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
-          >
-            Back to Dashboard
-          </Link>
+          <h1 className="text-2xl font-semibold text-white">
+            Welcome, {profile?.full_name}
+          </h1>
+
+          <form action="/logout" method="post">
+            <button className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 hover:bg-slate-800">
+              Logout
+            </button>
+          </form>
         </div>
 
-        {!winners || winners.length === 0 ? (
-          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-            <p className="text-slate-300">No winnings yet.</p>
+        {/* Profile Card */}
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6">
+          <h2 className="text-lg font-medium text-white mb-3">
+            Profile
+          </h2>
+
+          <p className="text-slate-300 text-sm">
+            Name: {profile?.full_name}
+          </p>
+
+          <p className="text-slate-300 text-sm">
+            Email: {profile?.email}
+          </p>
+
+          <p className="text-slate-300 text-sm">
+            Role: {profile?.role}
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="grid gap-4 md:grid-cols-3">
+          
+          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5">
+            <p className="text-sm text-slate-300">
+              Subscription
+            </p>
+            <p className="text-xl font-semibold text-white mt-2">
+              {subscription?.status || "Inactive"}
+            </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {winners.map((winner) => (
-              <div
-                key={winner.id}
-                className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20"
-              >
-                <p className="font-medium text-white">
-                  Match Type: {winner.match_type}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Prize Amount: ₹ {Number(winner.prize_amount).toFixed(2)}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Verification Status: {winner.verification_status}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Payment Status: {winner.payment_status}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Proof: {winner.proof_file_url || "Not submitted"}
-                </p>
 
-                <form action={submitProof} className="mt-4 space-y-3">
-                  <input type="hidden" name="winner_id" value={winner.id} />
-
-                  <input
-                    type="text"
-                    name="proof_file_url"
-                    placeholder="Paste screenshot link or proof text"
-                    defaultValue={winner.proof_file_url || ""}
-                    className="w-full rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
-                    required
-                  />
-
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-400"
-                  >
-                    Submit / Update Proof
-                  </button>
-                </form>
-              </div>
-            ))}
+          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5">
+            <p className="text-sm text-slate-300">
+              Charity
+            </p>
+            <p className="text-xl font-semibold text-white mt-2">
+              {charityName}
+            </p>
           </div>
-        )}
+
+          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5">
+            <p className="text-sm text-slate-300">
+              Total Winnings
+            </p>
+            <p className="text-xl font-semibold text-white mt-2">
+              ₹ {totalWinnings.toFixed(2)}
+            </p>
+          </div>
+
+        </div>
+
+        {/* Subscription Details */}
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6">
+          <h2 className="text-lg font-medium text-white mb-3">
+            Subscription Details
+          </h2>
+
+          <p className="text-sm text-slate-300">
+            Plan Type: {subscription?.plan_type || "monthly"}
+          </p>
+
+          <p className="text-sm text-slate-300">
+            Status: {subscription?.status || "inactive"}
+          </p>
+          <p className="text-sm text-slate-300">
+            Charity Contribution:{" "}
+            {subscription?.charity_percentage || 0}%
+          </p>
+        </div>
+
+        {/* Navigation */}
+        <div className="grid gap-4 md:grid-cols-3">
+
+          <Link
+            href="/user/charity"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 hover:bg-slate-800"
+          >
+            <h3 className="text-white font-medium">
+              Choose Charity
+            </h3>
+            <p className="text-sm text-slate-300 mt-2">
+              Select charity & contribution %
+            </p>
+          </Link>
+
+          <Link
+            href="/user/winnings"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 hover:bg-slate-800"
+          >
+            <h3 className="text-white font-medium">
+              My Winnings
+            </h3>
+            <p className="text-sm text-slate-300 mt-2">
+              Submit proof & track payments
+            </p>
+          </Link>
+
+          <Link
+            href="/user/scores"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 hover:bg-slate-800"
+          >
+            <h3 className="text-white font-medium">
+              My Scores
+            </h3>
+            <p className="text-sm text-slate-300 mt-2">
+              View your draw numbers
+            </p>
+          </Link>
+
+        </div>
+
       </div>
     </div>
   );

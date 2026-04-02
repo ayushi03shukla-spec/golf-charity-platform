@@ -36,7 +36,7 @@ async function createDraw(formData: FormData) {
   const year = Number(formData.get("year"));
   const drawType = String(formData.get("draw_type"));
 
-  if (!month  !year  !drawType) return;
+  if (!month || !year || !drawType) return;
 
   await supabase.from("draws").insert({
     month,
