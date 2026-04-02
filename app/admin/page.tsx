@@ -1,120 +1,130 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import Link from "next/link";
 
-export default async function HomePage() {
+export default async function AdminPage() {
   const supabase = await createClient();
 
-  const { data: charities } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, email, role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    redirect("/user");
+  }
+
+  const { count: totalUsers } = await supabase
+    .from("profiles")
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalCharities } = await supabase
     .from("charities")
-    .select("id, name, description, featured, category")
-    .eq("active", true)
-    .order("featured", { ascending: false })
-    .limit(3);
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalSubscriptions } = await supabase
+    .from("subscriptions")
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalDraws } = await supabase
+    .from("draws")
+    .select("*", { count: "exact", head: true });
+
+  const { data: donations } = await supabase
+    .from("donations")
+    .select("amount");
+
+  const totalDonationAmount =
+    donations?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   return (
-    <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-6xl space-y-12">
-        <section className="grid gap-8 md:grid-cols-2 md:items-center">
-          <div className="space-y-5">
-            <p className="text-sm uppercase tracking-[0.2em] text-gray-500">
-              Golf Charity Subscription Platform
-            </p>
+    <div className="min-h-screen p-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+          <form action="/logout" method="post">
+            <button className="rounded-lg border px-4 py-2">Logout</button>
+          </form>
+        </div>
 
-            <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-              Play smarter. Win monthly. Support a cause that matters.
-            </h1>
+        <div className="rounded-2xl border p-6">
+          <p>Name: {profile?.full_name}</p>
+          <p>Email: {profile?.email}</p>
+          <p>Role: {profile?.role}</p>
+        </div>
 
-            <p className="text-lg text-gray-600">
-              Track your latest golf scores, join monthly prize draws, and
-              contribute part of your subscription to your chosen charity.
-            </p>
-
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/signup"
-                className="rounded-lg bg-black px-5 py-3 text-white"
-              >
-                Get Started
-              </Link>
-
-              <Link
-                href="/login"
-                className="rounded-lg border px-5 py-3"
-              >
-                Login
-              </Link>
-            </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border p-5">
+            <p className="text-sm text-gray-600">Total Users</p>
+            <p className="mt-2 text-2xl font-semibold">{totalUsers || 0}</p>
           </div>
 
-          <div className="rounded-3xl border p-6 shadow-sm">
-            <div className="space-y-4">
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 1</p>
-                <p className="mt-1 font-medium">Subscribe monthly or yearly</p>
-              </div>
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 2</p>
-                <p className="mt-1 font-medium">Enter your latest 5 golf scores</p>
-              </div>
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 3</p>
-                <p className="mt-1 font-medium">Join monthly draw-based prizes</p>
-              </div>
-
-              <div className="rounded-2xl border p-4">
-                <p className="text-sm text-gray-600">Step 4</p>
-                <p className="mt-1 font-medium">Support your selected charity</p>
-              </div>
-            </div>
+          <div className="rounded-2xl border p-5">
+            <p className="text-sm text-gray-600">Total Charities</p>
+            <p className="mt-2 text-2xl font-semibold">{totalCharities || 0}</p>
           </div>
-        </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Track Performance</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Maintain your latest 5 Stableford scores with a clean, simple score flow.
+          <div className="rounded-2xl border p-5">
+            <p className="text-sm text-gray-600">Total Subscriptions</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {totalSubscriptions || 0}
             </p>
           </div>
 
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Win Monthly Rewards</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Participate in monthly 3-match, 4-match, and 5-match prize categories.
+          <div className="rounded-2xl border p-5">
+            <p className="text-sm text-gray-600">Total Draws</p>
+            <p className="mt-2 text-2xl font-semibold">{totalDraws || 0}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border p-5">
+          <p className="text-sm text-gray-600">Charity Contribution Total</p>
+          <p className="mt-2 text-2xl font-semibold">
+            ₹ {totalDonationAmount.toFixed(2)}
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Link
+            href="/admin/charities"
+            className="rounded-2xl border p-5 hover:bg-gray-50"
+          >
+            <h2 className="text-lg font-medium">Manage Charities</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Add, view, and delete charity listings.
             </p>
-          </div>
+          </Link>
 
-          <div className="rounded-2xl border p-6">
-            <h2 className="text-xl font-semibold">Give with Impact</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Choose a charity and direct part of your subscription toward meaningful causes.
+          <Link
+            href="/admin/draws"
+            className="rounded-2xl border p-5 hover:bg-gray-50"
+          >
+            <h2 className="text-lg font-medium">Manage Draws</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Create, simulate, and publish draw results.
             </p>
-          </div>
-        </section>
+          </Link>
 
-        <section className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Featured Charities</h2>
-            <Link href="/charities" className="text-sm underline">
-              View all
-            </Link>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {charities?.map((charity) => (
-              <div key={charity.id} className="rounded-2xl border p-6">
-                <p className="text-sm text-gray-500">{charity.category}</p>
-                <h3 className="mt-2 text-lg font-semibold">{charity.name}</h3>
-                <p className="mt-3 text-sm text-gray-600">
-                  {charity.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
+          <Link
+            href="/admin/winners"
+            className="rounded-2xl border p-5 hover:bg-gray-50"
+          >
+            <h2 className="text-lg font-medium">Winner Verification</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Review proof submissions and update payout status.
+            </p>
+          </Link>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
