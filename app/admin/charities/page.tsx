@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 
-async function addCharity(formData: FormData) {
+async function saveCharitySelection(formData: FormData) {
   "use server";
 
   const supabase = await createClient();
@@ -14,78 +14,44 @@ async function addCharity(formData: FormData) {
 
   if (!user) {
     redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") {
-    redirect("/user");
-  }
-
-  const name = String(formData.get("name"));
-  const description = String(formData.get("description"));
-  const category = String(formData.get("category"));
-  const upcomingEvents = String(formData.get("upcoming_events"));
-  const featured = formData.get("featured") === "on";
-
-  if (!name || !description || !category) {
-    return;
-  }
-
-  await supabase.from("charities").insert({
-    name,
-    description,
-    category,
-    upcoming_events: upcomingEvents,
-    featured,
-    active: true,
-  });
-
-  revalidatePath("/admin/charities");
-  revalidatePath("/user/charity");
-  redirect("/admin/charities");
-}
-
-async function deleteCharity(formData: FormData) {
-  "use server";
-
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") {
-    redirect("/user");
   }
 
   const charityId = String(formData.get("charity_id"));
+  const charityPercentage = Number(formData.get("charity_percentage"));
 
-  await supabase
-    .from("charities")
-    .update({ active: false })
-    .eq("id", charityId);
+  if (!charityId || charityPercentage < 10) {
+    return;
+  }
 
-  revalidatePath("/admin/charities");
+  const { data: existingSubscription } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingSubscription) {
+    await supabase
+      .from("subscriptions")
+      .update({
+        charity_id: charityId,
+        charity_percentage: charityPercentage,
+      })
+      .eq("user_id", user.id);
+  } else {
+    await supabase.from("subscriptions").insert({
+      user_id: user.id,
+      plan_type: "monthly",
+      status: "inactive",
+      charity_id: charityId,
+      charity_percentage: charityPercentage,
+    });
+  }
+
+  revalidatePath("/user");
   revalidatePath("/user/charity");
-  redirect("/admin/charities");
 }
 
-export default async function AdminCharitiesPage() {
+export default async function CharityPage() {
   const supabase = await createClient();
 
   const {
@@ -102,112 +68,90 @@ export default async function AdminCharitiesPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "admin") {
-    redirect("/user");
+  if (profile?.role === "admin") {
+    redirect("/admin");
   }
 
   const { data: charities } = await supabase
     .from("charities")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("id, name, description, category, featured, active")
+    .eq("active", true)
+    .order("featured", { ascending: false });
+
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("charity_id, charity_percentage, plan_type, status")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
+      <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Manage Charities</h1>
-          <Link href="/admin" className="rounded-lg border px-4 py-2">
-            Back to Admin
+          <h1 className="text-2xl font-semibold text-white">Choose Your Charity</h1>
+          <Link
+            href="/user"
+            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
+          >
+            Back to Dashboard
           </Link>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">Add Charity</h2>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">Charity Preference</h2>
 
-          <form action={addCharity} className="grid gap-4">
-            <input
-              type="text"
-              name="name"
-              placeholder="Charity name"
+          <form action={saveCharitySelection} className="space-y-4">
+            <select
+              name="charity_id"
+              defaultValue={subscription?.charity_id || ""}
               required
-              className="rounded-lg border p-3"
-            />
-
-            <input
-              type="text"
-              name="category"
-              placeholder="Category"
-              required
-              className="rounded-lg border p-3"
-            />
-
-            <textarea
-              name="description"
-              placeholder="Description"
-              required
-              className="min-h-28 rounded-lg border p-3"
-            />
+              className="w-full rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50"
+            >
+              <option value="">Select a charity</option>
+              {charities?.map((charity) => (
+                <option key={charity.id} value={charity.id}>
+                  {charity.name} — {charity.category}
+                </option>
+              ))}
+            </select>
 
             <input
-              type="text"
-              name="upcoming_events"
-              placeholder="Upcoming events"
-              className="rounded-lg border p-3"
+              type="number"
+              name="charity_percentage"
+              min="10"
+              max="100"
+              defaultValue={subscription?.charity_percentage || 10}
+              required
+              className="w-full rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
             />
-
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="featured" />
-              <span>Featured charity</span>
-            </label>
 
             <button
               type="submit"
-              className="rounded-lg bg-black px-4 py-3 text-white"
+              className="rounded-lg bg-blue-500 px-4 py-3 text-white transition hover:bg-blue-400"
             >
-              Add Charity
+              Save Charity Preference
             </button>
           </form>
+
+          <p className="mt-3 text-sm text-slate-300">
+            Minimum charity contribution is 10%.
+          </p>
         </div>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">Available Charities</h2>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">All Charities</h2>
-
-          {!charities || charities.length === 0 ? (
-            <p>No charities found.</p>
-          ) : (
-            <div className="space-y-4">
-              {charities.map((charity) => (
-                <div key={charity.id} className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{charity.name}</p>
-                      <p className="text-sm text-gray-600">{charity.category}</p>
-                      <p className="mt-2 text-sm">{charity.description}</p>
-                      <p className="mt-2 text-sm text-gray-600">
-                        Upcoming Events: {charity.upcoming_events || "N/A"}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-600">
-                        Featured: {charity.featured ? "Yes" : "No"}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-600">
-                        Active: {charity.active ? "Yes" : "No"}
-                      </p>
-                    </div>
-
-                    <form action={deleteCharity}>
-                      <input type="hidden" name="charity_id" value={charity.id} />
-                      <button
-                        type="submit"
-                        className="rounded-lg border px-3 py-2 text-sm"
-                      >
-                        Deactivate
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="space-y-4">
+            {charities?.map((charity) => (
+              <div
+                key={charity.id}
+                className="rounded-xl border border-slate-700 bg-[#0F172A] p-4"
+              >
+                <p className="font-medium text-white">{charity.name}</p>
+                <p className="text-sm text-teal-300">{charity.category}</p>
+                <p className="mt-2 text-sm text-slate-300">{charity.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

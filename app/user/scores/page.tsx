@@ -73,17 +73,20 @@ export default async function UserScoresPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">My Golf Scores</h1>
-          <Link href="/user" className="rounded-lg border px-4 py-2">
+          <h1 className="text-2xl font-semibold text-white">My Golf Scores</h1>
+          <Link
+            href="/user"
+            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
+          >
             Back to Dashboard
           </Link>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">Add New Score</h2>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">Add New Score</h2>
 
           <form action={addScore} className="grid gap-4 sm:grid-cols-2">
             <input
@@ -93,44 +96,44 @@ export default async function UserScoresPage() {
               max="45"
               placeholder="Enter score (1-45)"
               required
-              className="rounded-lg border p-3"
+              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
             />
 
             <input
               type="date"
               name="played_at"
               required
-              className="rounded-lg border p-3"
+              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50"
             />
 
             <button
               type="submit"
-              className="sm:col-span-2 rounded-lg bg-black p-3 text-white"
+              className="sm:col-span-2 rounded-lg bg-blue-500 p-3 text-white transition hover:bg-blue-400"
             >
               Save Score
             </button>
           </form>
 
-          <p className="mt-3 text-sm text-gray-600">
+          <p className="mt-3 text-sm text-slate-300">
             Only your latest 5 scores are kept.
           </p>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">Latest Scores</h2>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">Latest Scores</h2>
 
           {!scores || scores.length === 0 ? (
-            <p>No scores added yet.</p>
+            <p className="text-slate-300">No scores added yet.</p>
           ) : (
             <div className="space-y-3">
               {scores.map((score) => (
                 <div
                   key={score.id}
-                  className="flex items-center justify-between rounded-xl border p-4"
+                  className="flex items-center justify-between rounded-xl border border-slate-700 bg-[#0F172A] p-4"
                 >
                   <div>
-                    <p className="font-medium">Score: {score.score}</p>
-                    <p className="text-sm text-gray-600">
+                    <p className="font-medium text-white">Score: {score.score}</p>
+                    <p className="text-sm text-slate-300">
                       Date: {score.played_at}
                     </p>
                   </div>
