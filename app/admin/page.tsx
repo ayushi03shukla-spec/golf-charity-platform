@@ -1,60 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import Link from "next/link";
 
-async function approveWinner(formData: FormData) {
-  "use server";
-
-  const supabase = await createClient();
-  const winnerId = String(formData.get("winner_id"));
-
-  await supabase
-    .from("winners")
-    .update({
-      verification_status: "approved",
-    })
-    .eq("id", winnerId);
-
-  revalidatePath("/admin/winners");
-  revalidatePath("/user/winnings");
-}
-
-async function rejectWinner(formData: FormData) {
-  "use server";
-
-  const supabase = await createClient();
-  const winnerId = String(formData.get("winner_id"));
-
-  await supabase
-    .from("winners")
-    .update({
-      verification_status: "rejected",
-    })
-    .eq("id", winnerId);
-
-  revalidatePath("/admin/winners");
-  revalidatePath("/user/winnings");
-}
-
-async function markPaid(formData: FormData) {
-  "use server";
-
-  const supabase = await createClient();
-  const winnerId = String(formData.get("winner_id"));
-
-  await supabase
-    .from("winners")
-    .update({
-      payment_status: "paid",
-    })
-    .eq("id", winnerId);
-
-  revalidatePath("/admin/winners");
-  revalidatePath("/user/winnings");
-}
-
-export default async function AdminWinnersPage() {
+export default async function AdminPage() {
   const supabase = await createClient();
 
   const {
@@ -67,7 +15,7 @@ export default async function AdminWinnersPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("full_name, email, role")
     .eq("id", user.id)
     .single();
 
@@ -75,98 +23,115 @@ export default async function AdminWinnersPage() {
     redirect("/user");
   }
 
-  const { data: winners } = await supabase
-    .from("winners")
-    .select(`
-      id,
-      user_id,
-      draw_id,
-      match_type,
-      prize_amount,
-      proof_file_url,
-      verification_status,
-      payment_status,
-      created_at
-    `)
-    .order("created_at", { ascending: false });
+  const { count: totalUsers } = await supabase
+    .from("profiles")
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalCharities } = await supabase
+    .from("charities")
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalSubscriptions } = await supabase
+    .from("subscriptions")
+    .select("*", { count: "exact", head: true });
+
+  const { count: totalDraws } = await supabase
+    .from("draws")
+    .select("*", { count: "exact", head: true });
+
+  const { data: donations } = await supabase
+    .from("donations")
+    .select("amount");
+
+  const totalDonationAmount =
+    donations?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   return (
     <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-white">
-            Winner Verification
-          </h1>
-          <Link
-            href="/admin"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
-          >
-            Back to Admin
-          </Link>
+          <h1 className="text-2xl font-semibold text-white">Admin Dashboard</h1>
+          <form action="/logout" method="post">
+            <button className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800">
+              Logout
+            </button>
+          </form>
         </div>
 
-        {!winners || winners.length === 0 ? (
-          <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-            <p className="text-slate-300">No winners yet.</p>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <p>Name: {profile?.full_name}</p>
+          <p>Email: {profile?.email}</p>
+          <p>Role: {profile?.role}</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-blue-500/30 bg-[#121A2F] p-5 shadow-lg shadow-black/20">
+            <p className="text-sm text-slate-300">Total Users</p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              {totalUsers || 0}
+            </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {winners.map((winner) => (
-              <div
-                key={winner.id}
-                className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20"
-              >
-                <p className="font-medium text-white">
-                  Match Type: {winner.match_type}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Prize Amount: ₹ {Number(winner.prize_amount).toFixed(2)}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Verification Status: {winner.verification_status}
-                </p>
-                <p className="text-sm text-slate-300">
-                  Payment Status: {winner.payment_status}
-                </p>
-                <p className="text-sm text-slate-300 break-all">
-                  Proof: {winner.proof_file_url || "Not submitted"}
-                </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <form action={approveWinner}>
-                    <input type="hidden" name="winner_id" value={winner.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
-                    >
-                      Approve
-                    </button>
-                  </form>
-
-                  <form action={rejectWinner}>
-                    <input type="hidden" name="winner_id" value={winner.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
-                    >
-                      Reject
-                    </button>
-                  </form>
-
-                  <form action={markPaid}>
-                    <input type="hidden" name="winner_id" value={winner.id} />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition hover:bg-blue-400"
-                    >
-                      Mark Paid
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ))}
+          <div className="rounded-2xl border border-teal-500/30 bg-[#121A2F] p-5 shadow-lg shadow-black/20">
+            <p className="text-sm text-slate-300">Total Charities</p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              {totalCharities || 0}
+            </p>
           </div>
-        )}
+
+          <div className="rounded-2xl border border-purple-500/30 bg-[#121A2F] p-5 shadow-lg shadow-black/20">
+            <p className="text-sm text-slate-300">Total Subscriptions</p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              {totalSubscriptions || 0}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-amber-500/30 bg-[#121A2F] p-5 shadow-lg shadow-black/20">
+            <p className="text-sm text-slate-300">Total Draws</p>
+            <p className="mt-2 text-2xl font-semibold text-white">
+              {totalDraws || 0}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 shadow-lg shadow-black/20">
+          <p className="text-sm text-slate-300">Charity Contribution Total</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            ₹ {totalDonationAmount.toFixed(2)}
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Link
+            href="/admin/charities"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 transition hover:bg-slate-800"
+            >
+            <h2 className="text-lg font-medium text-white">Manage Charities</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Add, view, and deactivate charity listings.
+            </p>
+          </Link>
+
+          <Link
+            href="/admin/draws"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 transition hover:bg-slate-800"
+          >
+            <h2 className="text-lg font-medium text-white">Manage Draws</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Create, simulate, and publish draw results.
+            </p>
+          </Link>
+
+          <Link
+            href="/admin/winners"
+            className="rounded-2xl border border-slate-700 bg-[#121A2F] p-5 transition hover:bg-slate-800"
+          >
+            <h2 className="text-lg font-medium text-white">Winner Verification</h2>
+            <p className="mt-2 text-sm text-slate-300">
+              Review proof submissions and update payout status.
+            </p>
+          </Link>
+        </div>
       </div>
     </div>
   );
