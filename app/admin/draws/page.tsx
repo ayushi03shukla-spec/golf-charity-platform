@@ -5,9 +5,11 @@ import Link from "next/link";
 
 function generateRandomNumbers(count: number, min: number, max: number) {
   const nums = new Set<number>();
+
   while (nums.size < count) {
     nums.add(Math.floor(Math.random() * (max - min + 1)) + min);
   }
+
   return Array.from(nums).sort((a, b) => a - b);
 }
 
@@ -34,7 +36,7 @@ async function createDraw(formData: FormData) {
   const year = Number(formData.get("year"));
   const drawType = String(formData.get("draw_type"));
 
-  if (!month || !year || !drawType) return;
+  if (!month  !year  !drawType) return;
 
   await supabase.from("draws").insert({
     month,
@@ -130,9 +132,9 @@ async function publishDraw(formData: FormData) {
 
   await supabase.from("winners").delete().eq("draw_id", drawId);
 
-  let winners3: { user_id: string }[] = [];
-  let winners4: { user_id: string }[] = [];
-  let winners5: { user_id: string }[] = [];
+  const winners3: { user_id: string }[] = [];
+  const winners4: { user_id: string }[] = [];
+  const winners5: { user_id: string }[] = [];
 
   for (const subscriber of allUsers) {
     const { data: scores } = await supabase
@@ -161,11 +163,9 @@ async function publishDraw(formData: FormData) {
     .eq("status", "active");
 
   const totalPool = (activeSubscriberCount || 0) * 100;
-
   const pool5 = totalPool * 0.4;
   const pool4 = totalPool * 0.35;
   const pool3 = totalPool * 0.25;
-
   const payout5 = winners5.length > 0 ? pool5 / winners5.length : 0;
   const payout4 = winners4.length > 0 ? pool4 / winners4.length : 0;
   const payout3 = winners3.length > 0 ? pool3 / winners3.length : 0;
@@ -252,17 +252,20 @@ export default async function AdminDrawsPage() {
     .select("draw_id, match_type, prize_amount");
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Manage Draws</h1>
-          <Link href="/admin" className="rounded-lg border px-4 py-2">
+          <h1 className="text-2xl font-semibold text-white">Manage Draws</h1>
+          <Link
+            href="/admin"
+            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
+          >
             Back to Admin
           </Link>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">Create Draw</h2>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">Create Draw</h2>
 
           <form action={createDraw} className="grid gap-4 md:grid-cols-3">
             <input
@@ -272,7 +275,7 @@ export default async function AdminDrawsPage() {
               max="12"
               placeholder="Month"
               required
-              className="rounded-lg border p-3"
+              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
             />
 
             <input
@@ -280,33 +283,32 @@ export default async function AdminDrawsPage() {
               name="year"
               placeholder="Year"
               required
-              className="rounded-lg border p-3"
+              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
             />
 
             <select
               name="draw_type"
               required
-              className="rounded-lg border p-3"
+              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50"
             >
               <option value="">Select draw type</option>
               <option value="random">Random</option>
               <option value="algorithmic">Algorithmic</option>
             </select>
-
             <button
               type="submit"
-              className="md:col-span-3 rounded-lg bg-black px-4 py-3 text-white"
+              className="md:col-span-3 rounded-lg bg-blue-500 px-4 py-3 text-white transition hover:bg-blue-400"
             >
               Create Draw
             </button>
           </form>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-medium">All Draws</h2>
+        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
+          <h2 className="mb-4 text-xl font-medium text-white">All Draws</h2>
 
           {!draws || draws.length === 0 ? (
-            <p>No draws created yet.</p>
+            <p className="text-slate-300">No draws created yet.</p>
           ) : (
             <div className="space-y-4">
               {draws.map((draw) => {
@@ -314,24 +316,27 @@ export default async function AdminDrawsPage() {
                   winners?.filter((winner) => winner.draw_id === draw.id) || [];
 
                 return (
-                  <div key={draw.id} className="rounded-xl border p-4">
+                  <div
+                    key={draw.id}
+                    className="rounded-xl border border-slate-700 bg-[#0F172A] p-4"
+                  >
                     <div className="space-y-2">
-                      <p className="font-medium">
+                      <p className="font-medium text-white">
                         Draw: {draw.month}/{draw.year}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-slate-300">
                         Type: {draw.draw_type}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-slate-300">
                         Status: {draw.status}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-slate-300">
                         Winning Numbers:{" "}
                         {draw.winning_numbers?.length
                           ? draw.winning_numbers.join(", ")
                           : "Not generated"}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-slate-300">
                         Jackpot Carried Forward: ₹{" "}
                         {Number(draw.jackpot_carried_forward || 0).toFixed(2)}
                       </p>
@@ -341,7 +346,7 @@ export default async function AdminDrawsPage() {
                           <input type="hidden" name="draw_id" value={draw.id} />
                           <button
                             type="submit"
-                            className="rounded-lg border px-3 py-2 text-sm"
+                            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
                           >
                             Simulate
                           </button>
@@ -351,7 +356,7 @@ export default async function AdminDrawsPage() {
                           <input type="hidden" name="draw_id" value={draw.id} />
                           <button
                             type="submit"
-                            className="rounded-lg bg-black px-3 py-2 text-sm text-white"
+                            className="rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition hover:bg-blue-400"
                           >
                             Publish
                           </button>
@@ -360,8 +365,8 @@ export default async function AdminDrawsPage() {
 
                       {drawWinners.length > 0 && (
                         <div className="pt-3">
-                          <p className="font-medium">Winners</p>
-                          <div className="mt-2 space-y-1 text-sm text-gray-700">
+                          <p className="font-medium text-white">Winners</p>
+                          <div className="mt-2 space-y-1 text-sm text-slate-300">
                             {drawWinners.map((winner, index) => (
                               <p key={index}>
                                 {winner.match_type} — ₹{" "}
