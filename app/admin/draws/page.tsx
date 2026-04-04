@@ -1,87 +1,77 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { createClient } from "../../../lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import Link from "next/link";
+import { generateTickets } from "../../../lib/generateTickets";
 
-function generateRandomNumbers(count: number, min: number, max: number) {
-  const nums = new Set<number>();
-
-  while (nums.size < count) {
-    nums.add(Math.floor(Math.random() * (max - min + 1)) + min);
-  }
-
-  return Array.from(nums).sort((a, b) => a - b);
-}
-
+// ================== CREATE DRAW ==================
 async function createDraw(formData: FormData) {
   "use server";
 
+  console.log("CREATE DRAW TRIGGERED");
+
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const drawDateStr = String(formData.get("draw_date") || "");
+  const jackpotStr = String(formData.get("jackpot") || "");
+  const drawType = String(formData.get("draw_type") || "");
 
-  if (!user) redirect("/login");
+  const jackpot = Number(jackpotStr);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  console.log("FORM DATA RECEIVED:", { drawDateStr, jackpot, drawType });
 
-  if (profile?.role !== "admin") redirect("/user");
+  if (!drawDateStr || !jackpot || jackpot <= 0 || !drawType) {
+    console.error("Missing or invalid required fields");
+    return;
+  }
 
-  const month = Number(formData.get("month"));
-  const year = Number(formData.get("year"));
-  const drawType = String(formData.get("draw_type"));
+  const drawDate = new Date(drawDateStr);
+  if (isNaN(drawDate.getTime())) {
+    console.error("Invalid draw_date format");
+    return;
+  }
 
-  if (!month || !year || !drawType) return;
+  const month = drawDate.getMonth() + 1;
+  const year = drawDate.getFullYear();
 
-  await supabase.from("draws").insert({
-    month,
-    year,
-    draw_type: drawType,
-    status: "draft",
-    winning_numbers: [],
-    jackpot_carried_forward: 0,
-  });
+  const { data, error } = await supabase
+    .from("draws")
+    .insert({
+      draw_date: drawDateStr,
+      month: month,
+      year: year,
+      jackpot: jackpot,
+      draw_type: drawType,
+      status: "open",                    // ✅ Now allowed
+    })
+    .select();
+
+  console.log("INSERT DATA:", data);
+  console.log("INSERT ERROR:", error);
+
+  if (error) {
+    console.error("Failed to create draw:", error.message);
+    return;
+  }
+
+  console.log("✅ Draw created successfully. Generating tickets...");
+  await generateTickets();
 
   revalidatePath("/admin/draws");
 }
 
+// ================== SIMULATE DRAW ==================
 async function simulateDraw(formData: FormData) {
   "use server";
 
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") redirect("/user");
-
   const drawId = String(formData.get("draw_id"));
 
-  const { data: draw } = await supabase
-    .from("draws")
-    .select("*")
-    .eq("id", drawId)
-    .single();
+  if (!drawId) return;
 
-  if (!draw) return;
+  const winningNumbers = Array.from({ length: 5 }, () =>
+    Math.floor(Math.random() * 45) + 1
+  ).sort((a, b) => a - b);
 
-  const winningNumbers = generateRandomNumbers(5, 1, 45);
-
-  await supabase
+  const { error } = await supabase
     .from("draws")
     .update({
       winning_numbers: winningNumbers,
@@ -89,29 +79,20 @@ async function simulateDraw(formData: FormData) {
     })
     .eq("id", drawId);
 
+  if (error) console.error("Simulate error:", error.message);
+  else console.log(`✅ Draw ${drawId} simulated`);
+
   revalidatePath("/admin/draws");
 }
 
+// ================== PUBLISH DRAW ==================
 async function publishDraw(formData: FormData) {
   "use server";
 
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") redirect("/user");
-
   const drawId = String(formData.get("draw_id"));
+
+  if (!drawId) return;
 
   const { data: draw } = await supabase
     .from("draws")
@@ -119,270 +100,168 @@ async function publishDraw(formData: FormData) {
     .eq("id", drawId)
     .single();
 
-  if (!draw || !draw.winning_numbers || draw.winning_numbers.length !== 5) {
-    return;
+  if (!draw?.winning_numbers) return;
+
+  const { data: tickets } = await supabase
+    .from("tickets")
+    .select("*")
+    .eq("draw_id", drawId);
+
+  if (tickets?.length) {
+    for (const ticket of tickets) {
+      const ticketNumbers = ticket.numbers as number[];
+      const winningNumbers = draw.winning_numbers as number[];
+      const matches = ticketNumbers.filter((n) => winningNumbers.includes(n)).length;
+
+      if (matches >= 3) {
+        await supabase.from("winners").insert({
+          draw_id: drawId,
+          user_id: ticket.user_id,
+          match_type: `match_${matches}`,
+          prize_amount: matches === 3 ? 100 : matches === 4 ? 500 : 1000,
+          payment_status: "pending",
+        });
+      }
+    }
   }
-
-  const { data: allUsers } = await supabase
-    .from("profiles")
-    .select("id, email")
-    .eq("role", "subscriber");
-
-  if (!allUsers) return;
-
-  await supabase.from("winners").delete().eq("draw_id", drawId);
-
-  const winners3: { user_id: string }[] = [];
-  const winners4: { user_id: string }[] = [];
-  const winners5: { user_id: string }[] = [];
-
-  for (const subscriber of allUsers) {
-    const { data: scores } = await supabase
-      .from("golf_scores")
-      .select("score, played_at, created_at")
-      .eq("user_id", subscriber.id)
-      .order("played_at", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (!scores || scores.length < 5) continue;
-
-    const userNumbers = scores.map((s) => s.score);
-    const matches = userNumbers.filter((n) =>
-      draw.winning_numbers.includes(n)
-    ).length;
-
-    if (matches === 3) winners3.push({ user_id: subscriber.id });
-    if (matches === 4) winners4.push({ user_id: subscriber.id });
-    if (matches === 5) winners5.push({ user_id: subscriber.id });
-  }
-
-  const { count: activeSubscriberCount } = await supabase
-    .from("subscriptions")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "active");
-
-  const totalPool = (activeSubscriberCount || 0) * 100;
-  const pool5 = totalPool * 0.4;
-  const pool4 = totalPool * 0.35;
-  const pool3 = totalPool * 0.25;
-  const payout5 = winners5.length > 0 ? pool5 / winners5.length : 0;
-  const payout4 = winners4.length > 0 ? pool4 / winners4.length : 0;
-  const payout3 = winners3.length > 0 ? pool3 / winners3.length : 0;
-
-  for (const winner of winners5) {
-    await supabase.from("winners").insert({
-      draw_id: drawId,
-      user_id: winner.user_id,
-      match_type: "5-match",
-      prize_amount: payout5,
-      verification_status: "pending",
-      payment_status: "pending",
-    });
-  }
-
-  for (const winner of winners4) {
-    await supabase.from("winners").insert({
-      draw_id: drawId,
-      user_id: winner.user_id,
-      match_type: "4-match",
-      prize_amount: payout4,
-      verification_status: "pending",
-      payment_status: "pending",
-    });
-  }
-
-  for (const winner of winners3) {
-    await supabase.from("winners").insert({
-      draw_id: drawId,
-      user_id: winner.user_id,
-      match_type: "3-match",
-      prize_amount: payout3,
-      verification_status: "pending",
-      payment_status: "pending",
-    });
-  }
-
-  await supabase.from("prize_pools").insert({
-    draw_id: drawId,
-    total_pool: totalPool,
-    pool_5_match: pool5,
-    pool_4_match: pool4,
-    pool_3_match: pool3,
-    rollover_amount: winners5.length === 0 ? pool5 : 0,
-  });
 
   await supabase
     .from("draws")
-    .update({
-      status: "published",
-      published_at: new Date().toISOString(),
-      jackpot_carried_forward: winners5.length === 0 ? pool5 : 0,
-    })
+    .update({ status: "published" })
     .eq("id", drawId);
 
   revalidatePath("/admin/draws");
-  revalidatePath("/admin");
+  revalidatePath("/admin/winners");
 }
 
+// ================== PAGE UI ==================
 export default async function AdminDrawsPage() {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") redirect("/user");
 
   const { data: draws } = await supabase
     .from("draws")
     .select("*")
     .order("created_at", { ascending: false });
 
-  const { data: winners } = await supabase
-    .from("winners")
-    .select("draw_id, match_type, prize_amount");
-
   return (
-    <div className="min-h-screen bg-[#0B1020] p-6 text-slate-50">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-white">Manage Draws</h1>
-          <Link
-            href="/admin"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-slate-100 transition hover:bg-slate-800"
+    <div className="p-6 space-y-6 text-white bg-[#0B1020] min-h-screen">
+      <h1 className="text-2xl font-semibold">Draw Management</h1>
+
+      {/* CREATE DRAW FORM */}
+      <form action={createDraw} className="flex gap-3 flex-wrap items-end">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Draw Date</label>
+          <input
+            type="date"
+            name="draw_date"
+            required
+            className="bg-black border border-slate-700 px-3 py-2 rounded w-40"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Jackpot (₹)</label>
+          <input
+            type="number"
+            name="jackpot"
+            placeholder="1000000"
+            required
+            className="bg-black border border-slate-700 px-3 py-2 rounded w-40"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Draw Type</label>
+          <select
+            name="draw_type"
+            required
+            className="bg-black border border-slate-700 px-3 py-2 rounded w-40"
           >
-            Back to Admin
-          </Link>
+            <option value="random">Random</option>
+            <option value="regular">Regular</option>
+            <option value="charity">Charity</option>
+            <option value="golf">Golf Special</option>
+          </select>
         </div>
 
-        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-          <h2 className="mb-4 text-xl font-medium text-white">Create Draw</h2>
+        <button
+          type="submit"
+          className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-medium transition-colors"
+        >
+          Create New Draw
+        </button>
+      </form>
 
-          <form action={createDraw} className="grid gap-4 md:grid-cols-3">
-            <input
-              type="number"
-              name="month"
-              min="1"
-              max="12"
-              placeholder="Month"
-              required
-              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
-            />
+      {/* DRAW LIST */}
+      <div className="space-y-4">
+        {draws?.length === 0 && <p className="text-gray-400">No draws yet.</p>}
 
-            <input
-              type="number"
-              name="year"
-              placeholder="Year"
-              required
-              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50 placeholder:text-slate-400"
-            />
+        {draws?.map((draw) => (
+          <div
+            key={draw.id}
+            className="bg-[#121A2F] p-5 rounded-2xl border border-slate-700"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-lg font-medium">
+                  {new Date(draw.draw_date).toLocaleDateString("en-IN", {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+                <p className="text-2xl font-semibold text-emerald-400">
+                  ₹ {Number(draw.jackpot).toLocaleString("en-IN")}
+                </p>
+              </div>
 
-            <select
-              name="draw_type"
-              required
-              className="rounded-lg border border-slate-600 bg-[#0F172A] p-3 text-slate-50"
-            >
-              <option value="">Select draw type</option>
-              <option value="random">Random</option>
-              <option value="algorithmic">Algorithmic</option>
-            </select>
-            <button
-              type="submit"
-              className="md:col-span-3 rounded-lg bg-blue-500 px-4 py-3 text-white transition hover:bg-blue-400"
-            >
-              Create Draw
-            </button>
-          </form>
-        </div>
-
-        <div className="rounded-2xl border border-slate-700 bg-[#121A2F] p-6 shadow-lg shadow-black/20">
-          <h2 className="mb-4 text-xl font-medium text-white">All Draws</h2>
-
-          {!draws || draws.length === 0 ? (
-            <p className="text-slate-300">No draws created yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {draws.map((draw) => {
-                const drawWinners =
-                  winners?.filter((winner) => winner.draw_id === draw.id) || [];
-
-                return (
-                  <div
-                    key={draw.id}
-                    className="rounded-xl border border-slate-700 bg-[#0F172A] p-4"
-                  >
-                    <div className="space-y-2">
-                      <p className="font-medium text-white">
-                        Draw: {draw.month}/{draw.year}
-                      </p>
-                      <p className="text-sm text-slate-300">
-                        Type: {draw.draw_type}
-                      </p>
-                      <p className="text-sm text-slate-300">
-                        Status: {draw.status}
-                      </p>
-                      <p className="text-sm text-slate-300">
-                        Winning Numbers:{" "}
-                        {draw.winning_numbers?.length
-                          ? draw.winning_numbers.join(", ")
-                          : "Not generated"}
-                      </p>
-                      <p className="text-sm text-slate-300">
-                        Jackpot Carried Forward: ₹{" "}
-                        {Number(draw.jackpot_carried_forward || 0).toFixed(2)}
-                      </p>
-
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        <form action={simulateDraw}>
-                          <input type="hidden" name="draw_id" value={draw.id} />
-                          <button
-                            type="submit"
-                            className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
-                          >
-                            Simulate
-                          </button>
-                        </form>
-
-                        <form action={publishDraw}>
-                          <input type="hidden" name="draw_id" value={draw.id} />
-                          <button
-                            type="submit"
-                            className="rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition hover:bg-blue-400"
-                          >
-                            Publish
-                          </button>
-                        </form>
-                      </div>
-
-                      {drawWinners.length > 0 && (
-                        <div className="pt-3">
-                          <p className="font-medium text-white">Winners</p>
-                          <div className="mt-2 space-y-1 text-sm text-slate-300">
-                            {drawWinners.map((winner, index) => (
-                              <p key={index}>
-                                {winner.match_type} — ₹{" "}
-                                {Number(winner.prize_amount).toFixed(2)}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="text-right">
+                <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${
+                  draw.status === "published" ? "bg-green-500/20 text-green-400" :
+                  draw.status === "simulated" ? "bg-yellow-500/20 text-yellow-400" :
+                  "bg-blue-500/20 text-blue-400"
+                }`}>
+                  {draw.status.toUpperCase()}
+                </span>
+                <p className="text-xs text-gray-400 mt-1">
+                  Type: <span className="capitalize">{draw.draw_type}</span>
+                </p>
+              </div>
             </div>
-          )}
-        </div>
+
+            {draw.winning_numbers ? (
+              <p className="mt-4 text-sm">
+                <span className="text-gray-400">Winning Numbers:</span>{" "}
+                <span className="font-mono text-lg tracking-widest">
+                  {draw.winning_numbers.join(" • ")}
+                </span>
+              </p>
+            ) : (
+              <p className="mt-4 text-sm text-gray-400">Winning numbers not generated yet</p>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              {draw.status === "open" && (
+                <form action={simulateDraw}>
+                  <input type="hidden" name="draw_id" value={draw.id} />
+                  <button type="submit" className="bg-yellow-500 hover:bg-yellow-400 text-black px-5 py-2 rounded-lg font-medium">
+                    Simulate Draw
+                  </button>
+                </form>
+              )}
+
+              {draw.status === "simulated" && (
+                <form action={publishDraw}>
+                  <input type="hidden" name="draw_id" value={draw.id} />
+                  <button type="submit" className="bg-green-600 hover:bg-green-500 px-5 py-2 rounded-lg font-medium">
+                    Publish Results
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
